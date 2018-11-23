@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate clap;
 extern crate console;
 extern crate indicatif;
@@ -18,6 +19,7 @@ use std::path::PathBuf;
 use std::io::{Error, ErrorKind};
 use std::time::Instant;
 
+use chrono::prelude::*;
 use clap::{Arg, App};
 use console::style;
 use indicatif::HumanDuration;
@@ -30,6 +32,9 @@ fn run(bin_path: String, name: String, output_path: PathBuf) -> Result<(), Error
 	if !fs::metadata(&bin_path)?.is_file() {
 		return Err(Error::new(ErrorKind::Other, "The given binary path is not a file."));
 	}
+
+	let now = Local::now();
+	let output_path = output_path.join(format!("{}_{}", name, now.format("%Y-%m-%dT%H:%M:%S").to_string()));
 	fs::create_dir_all(&output_path)?;
 
     let started = Instant::now();
