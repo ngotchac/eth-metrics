@@ -21,9 +21,9 @@ use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports:
 use child_guard::ChildGuard;
 use plotter::{Plotter, Line};
 
-const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 4);
+const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60 * 3);
+const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 33);
 const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
-const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60);
 const MIN_PEERS: u32 = 50;
 
 fn duration_as_f64(duration: Duration) -> f64 {
@@ -305,7 +305,7 @@ impl Runner {
 			let std_dev = peer_count[skip_index..].std_dev();
 
 			result.push_str(&format!(
-				"  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}\n",
+				"  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ; mean={:.2} ; std_dev={:.2}\n",
 				index, min, max, mean, std_dev));
 			index += 1;
 		}

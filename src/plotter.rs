@@ -37,7 +37,7 @@ impl Plotter {
 			title: String::from("Block heights"),
 			y_label: String::from("Block Height"),
 			y_min: 0.0,
-			y_max: 100_000.0,
+			y_max: 500_000.0,
 		};
 
 		self.plot(params, lines);
@@ -70,7 +70,7 @@ impl Plotter {
 	fn plot(&self, params: PlotParams, lines: &Vec<Line>) {
 		let mut fg = Figure::new();
 
-		let title = format!("{} for _{}_", params.title, self.name);
+		let title = format!("{} for {}", params.title, self.name);
 
 		{
 			let fg_2d = fg.axes2d()
