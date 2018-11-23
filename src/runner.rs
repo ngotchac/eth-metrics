@@ -1,13 +1,15 @@
 use std::io::{Error, ErrorKind};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
 use indicatif::{ProgressBar, ProgressStyle};
-use tempdir::TempDir;
+use regex::Regex;
 use separator::Separatable;
 use statrs::statistics::{Min, Max, Mean, Variance};
+use tempdir::TempDir;
 use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports::EventLoopHandle};
 
 use child_guard::ChildGuard;
@@ -27,6 +29,9 @@ fn duration_to_ms(duration: Duration) -> u64 {
 
 pub struct Runner {
 	bin_path: String,
+	output_path: PathBuf,
+	name: String,
+	version: String,
 	tmp_dir: Option<TempDir>,
 	child: Option<ChildGuard>,
 	web3: Option<(Web3<HttpTransport>, EventLoopHandle)>,
@@ -37,9 +42,14 @@ pub struct Runner {
 
 impl Runner {
 	/// Creates a new runner with the given binary path
-	pub fn new(bin_path: String) -> Result<Self, Error> {
+	pub fn new(bin_path: String, name: String, output_path: PathBuf) -> Result<Self, Error> {
+		let version = Runner::version(&bin_path)?;
+
 		Ok(Runner {
 			bin_path,
+			output_path,
+			name,
+			version,
 			tmp_dir: None,
 			child: None,
 			web3: None,
@@ -47,6 +57,23 @@ impl Runner {
 			block_speeds: Vec::new(),
 			peer_counts: Vec::new(),
 		})
+	}
+
+	/// Get the version of the given binary
+	fn version(bin_path: &String) -> Result<String, Error> {
+		let output = Command::new(bin_path)
+			.arg("--version")
+			.output()?;
+
+		let re = Regex::new(r"version (?P<version>[^\s]+)").unwrap();
+		let stdout = String::from_utf8_lossy(&output.stdout);
+		let captures = re.captures(&stdout);
+		let version = match captures {
+			Some(ref captures) => &captures["version"],
+			_ => return Err(Error::new(ErrorKind::Other, "Could not find version of the binary.")),
+		};
+
+		Ok(String::from(version))
 	}
 
 	/// Start the node with the pre-defined configuration
@@ -254,7 +281,7 @@ impl Runner {
 			return Err(Error::new(ErrorKind::Other, "No data have been collected."));
 		}
 
-		let plotter = Plotter::new();
+		let plotter = Plotter::new(self.name.clone(), self.output_path.clone());
 
 		plotter.block_height(&self.block_heights);
 		plotter.block_speeds(&self.block_speeds);

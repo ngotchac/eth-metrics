@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use gnuplot::*;
 
 pub type Line = (Vec<f64>, Vec<f64>);
@@ -22,19 +24,20 @@ struct PlotParams {
 }
 
 pub struct Plotter {
-
+	name: String,
+	output_path: PathBuf,
 }
 
 impl Plotter {
-	pub fn new() -> Self {
+	pub fn new(name: String, output_path: PathBuf) -> Self {
 		Plotter {
-
+			name, output_path,
 		}
 	}
 
 	pub fn block_height(&self, lines: &Vec<Line>) {
 		let params = PlotParams {
-			filepath: String::from("bh.png"),
+			filepath: String::from("block_heights.png"),
 			title: String::from("Block heights"),
 			y_label: String::from("Block Height"),
 			y_min: 0.0,
@@ -46,7 +49,7 @@ impl Plotter {
 
 	pub fn block_speeds(&self, lines: &Vec<Line>) {
 		let params = PlotParams {
-			filepath: String::from("bs.png"),
+			filepath: String::from("block_speeds.png"),
 			title: String::from("Block speed"),
 			y_label: String::from("Block speed (bps)"),
 			y_min: 0.0,
@@ -58,7 +61,7 @@ impl Plotter {
 
 	pub fn peer_count(&self, lines: &Vec<Line>) {
 		let params = PlotParams {
-			filepath: String::from("peers.png"),
+			filepath: String::from("peer_counts.png"),
 			title: String::from("Peer count"),
 			y_label: String::from("Number of peers"),
 			y_min: 0.0,
@@ -71,9 +74,11 @@ impl Plotter {
 	fn plot(&self, params: PlotParams, lines: &Vec<Line>) {
 		let mut fg = Figure::new();
 
+		let title = format!("{} for _{}_", params.title, self.name);
+
 		{
 			let fg_2d = fg.axes2d()
-				.set_title(params.title.as_str(), &[])
+				.set_title(title.as_str(), &[])
 				.set_x_label("Time (s)", &[])
 				.set_x_range(Fix(0.0), Auto)
 				.set_y_label(params.y_label.as_str(), &[])
@@ -89,7 +94,9 @@ impl Plotter {
 			}
 		}
 
-		fg.set_terminal("pngcairo size 800, 600", params.filepath.as_str());
+		let filepath = self.output_path.join(params.filepath);
+
+		fg.set_terminal("pngcairo size 800, 600", filepath.to_str().unwrap());
 		fg.show();
 	}
 }
