@@ -31,9 +31,11 @@ fn duration_to_ms(duration: Duration) -> u64 {
 	duration.as_secs() * 1_000 + duration.subsec_millis() as u64
 }
 
-fn get_available_port() -> Option<u16> {
+fn get_available_ports() -> Vec<u16> {
     (8000..9000)
-        .find(|port| port_is_available(*port))
+        .filter(|port| port_is_available(*port))
+		.take(2)
+		.collect()
 }
 
 fn port_is_available(port: u16) -> bool {
@@ -110,14 +112,12 @@ impl Runner {
 			_ => (),
 		}
 
-		let port = match get_available_port() {
-			Some(port) => port,
-			None => return Err(Error::new(ErrorKind::Other, "Could not find any available port.")),
-		};
-		let rpc_port = match get_available_port() {
-			Some(port) => port,
-			None => return Err(Error::new(ErrorKind::Other, "Could not find any available port.")),
-		};
+		let ports = get_available_ports();
+		if ports.len() < 2 {
+			return Err(Error::new(ErrorKind::Other, "Could not find any available port."));
+		}
+		let port = ports[0];
+		let rpc_port = ports[1];
 		let child = Command::new(&self.bin_path)
 			.arg("-d").arg(tmp_data_dir)
 			.arg("--chain").arg("foundation")
@@ -128,7 +128,6 @@ impl Runner {
 			.arg("--no-ws")
 			.arg("--no-ipc")
 			.arg("--no-secretstore")
-			.arg("")
 			.stderr(Stdio::piped())
 			.stdout(Stdio::piped())
 			.spawn()?;
