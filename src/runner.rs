@@ -8,6 +8,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
+use rand::{thread_rng, Rng};
+use rand::distributions::Uniform;
 use fs_extra::dir::{self, CopyOptions};
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
@@ -33,7 +35,9 @@ fn duration_to_ms(duration: Duration) -> u64 {
 }
 
 fn get_available_ports() -> Vec<u16> {
-    (8000..9000)
+	let mut rng = thread_rng();
+
+	rng.sample_iter(&Uniform::new_inclusive(8_000, 9_000))
         .filter(|port| port_is_available(*port))
 		.take(2)
 		.collect()
@@ -289,8 +293,8 @@ impl Runner {
 
 		let mut result = String::new();
 
-		result.push_str("Analysis results:");
-		result.push_str(&format!("  - Version: {}\n", self.version));
+		result.push_str("Analysis results:\n");
+		result.push_str(&format!("  - Version: {}\n\n", self.version));
 
 		let skip_index = (duration_as_f64(ANALYSIS_TIME_SKIP) / duration_as_f64(DATA_COLLECTION_INTERVAL)) as usize;
 		let mut index = 1;
@@ -300,11 +304,12 @@ impl Runner {
 			let mean = peer_count[skip_index..].mean();
 			let std_dev = peer_count[skip_index..].std_dev();
 
-			result.push_str(&format!("  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}",
+			result.push_str(&format!(
+				"  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}\n",
 				index, min, max, mean, std_dev));
 			index += 1;
 		}
-		result.push_str("");
+		result.push_str("\n");
 
 		// Block speeds are averaged every second
 		let skip_index = ANALYSIS_TIME_SKIP.as_secs() as usize;
@@ -314,11 +319,12 @@ impl Runner {
 			let std_dev = block_speeds[skip_index..].std_dev();
 			let max = self.block_heights[index - 1].1[self.block_heights[index - 1].1.len() - 1];
 
-			result.push_str(&format!("  - [Block Height] Run #{}: max={:.0} ; mean_speed={:.2}bps ; std_dev={:.2}",
+			result.push_str(&format!(
+				"  - [Block Height] Run #{}: max={:.0} ; mean_speed={:.2}bps ; std_dev={:.2}\n",
 				index, max, mean, std_dev));
 			index += 1;
 		}
-		result.push_str("");
+		result.push_str("\n");
 
 		let filepath = self.output_path.join("results.md");
 		let mut file = File::create(filepath)?;

@@ -6,6 +6,7 @@ extern crate indicatif;
 extern crate libc;
 extern crate web3;
 extern crate separator;
+extern crate rand;
 extern crate statrs;
 extern crate tempdir;
 extern crate gnuplot;
