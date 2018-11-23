@@ -5,14 +5,10 @@ use gnuplot::*;
 pub type Line = (Vec<f64>, Vec<f64>);
 
 const COLORS: &'static [&'static str] = &[
-	"#003f5c",
-	"#2f4b7c",
-	"#665191",
-	"#a05195",
-	"#d45087",
-	"#f95d6a",
-	"#ff7c43",
-	"#ffa600"
+	"#5899DA",
+	"#E8743B",
+	"#19A979",
+	"#ED4A7B",
 ];
 
 struct PlotParams {
