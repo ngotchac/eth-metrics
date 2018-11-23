@@ -1,0 +1,265 @@
+use std::io::{Error, ErrorKind};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
+
+use indicatif::{ProgressBar, ProgressStyle};
+use tempdir::TempDir;
+use separator::Separatable;
+use statrs::statistics::{Min, Max, Mean, Variance};
+use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports::EventLoopHandle};
+
+use child_guard::ChildGuard;
+use plotter::{Plotter, Line};
+
+const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(30);
+const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
+const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(2);
+
+fn duration_as_f64(duration: Duration) -> f64 {
+    duration.as_secs() as f64 + duration.subsec_millis() as f64 / 1_000.0
+}
+
+fn duration_to_ms(duration: Duration) -> u64 {
+	duration.as_secs() * 1_000 + duration.subsec_millis() as u64
+}
+
+pub struct Runner {
+	bin_path: String,
+	tmp_dir: Option<TempDir>,
+	child: Option<ChildGuard>,
+	web3: Option<(Web3<HttpTransport>, EventLoopHandle)>,
+	block_heights: Vec<Line>,
+	block_speeds: Vec<Line>,
+	peer_counts: Vec<Line>,
+}
+
+impl Runner {
+	/// Creates a new runner with the given binary path
+	pub fn new(bin_path: String) -> Result<Self, Error> {
+		Ok(Runner {
+			bin_path,
+			tmp_dir: None,
+			child: None,
+			web3: None,
+			block_heights: Vec::new(),
+			block_speeds: Vec::new(),
+			peer_counts: Vec::new(),
+		})
+	}
+
+	/// Start the node with the pre-defined configuration
+	pub fn start(&mut self) -> Result<(), Error> {
+		let tmp_dir = TempDir::new("eth-metrics")?;
+		let data_dir_path = tmp_dir.path().join("parity-data");
+		let data_dir = match data_dir_path.to_str() {
+			Some(data_dir) => data_dir,
+			None => return Err(Error::new(ErrorKind::Other, "Could not find the node's data directory.")),
+		};
+
+		let child = Command::new(&self.bin_path)
+			.arg("-d").arg(data_dir)
+			.arg("--chain").arg("kovan")
+			.arg("--no-warp")
+			.stderr(Stdio::piped())
+			.stdout(Stdio::null())
+			.spawn()?;
+
+    	let child_guard = ChildGuard::new(child);
+		let (_eloop, transport) = HttpTransport::new("http://localhost:8545").unwrap();
+        let web3 = Web3::new(transport);
+
+		self.child = Some(child_guard);
+		self.web3 = Some((web3, _eloop));
+		self.tmp_dir = Some(tmp_dir);
+
+		Ok(())
+	}
+
+	pub fn stop(&mut self) -> Result<(), Error> {
+		self.web3 = None;
+
+		{
+			let child = match self.child {
+				Some(ref mut child) => child,
+				None => return Err(Error::new(ErrorKind::Other, "The Runner has not been started yet.")),
+			};
+
+			child.terminate();
+		}
+
+		self.child = None;
+
+		let tmp_dir = ::std::mem::replace(&mut self.tmp_dir, None);
+		tmp_dir.map_or(Ok(()), |dir| dir.close())?;
+
+		Ok(())
+	}
+
+	/// Wait until the node is ready to be queried
+	pub fn wait_until_ready(&mut self) -> Result<(), Error> {
+		let web3 = match self.web3 {
+			Some((ref web3, _)) => web3,
+			None => return Err(Error::new(ErrorKind::Other, "The Runner has not been started yet.")),
+		};
+
+		let timedout = Arc::new(AtomicBool::from(false));
+		let timedout_2 = timedout.clone();
+
+		thread::spawn(move || {
+			thread::sleep(Duration::from_secs(5));
+			timedout_2.store(true, Ordering::SeqCst);
+		});
+
+        loop {
+			match self.child {
+				Some(ref mut child) => child.check()?,
+				_ => (),
+			}
+			if timedout.load(Ordering::SeqCst) {
+				return Err(Error::new(ErrorKind::Other, "Node was node ready even after 5s."));
+			}
+            match web3.eth().block_number().wait() {
+                Ok(_) => {
+                    break;
+                },
+                Err(_e) => {
+					// println!("Error: {}", e);
+                    thread::sleep(Duration::from_millis(500));
+                }
+            }
+        }
+
+		Ok(())
+	}
+
+	/// Collect some data for some time
+	pub fn collect_data(&mut self) -> Result<(), Error> {
+		let web3 = match self.web3 {
+			Some((ref web3, _)) => web3,
+			None => return Err(Error::new(ErrorKind::Other, "The Runner has not been started yet.")),
+		};
+
+        let pb = ProgressBar::new(duration_to_ms(DATA_COLLECTION_DURATION));
+        let spinner_style = ProgressStyle::default_bar()
+            .template("{spinner:.green} {bar:40.cyan/blue} {msg} ({eta})");
+        pb.set_style(spinner_style);
+
+        let start = Instant::now();
+		let mut elapsed = Duration::new(0, 0);
+
+		let mut times = Vec::new();
+		let mut block_heights = Vec::new();
+		let mut peer_counts = Vec::new();
+
+        while elapsed < DATA_COLLECTION_DURATION {
+			match self.child {
+				Some(ref mut child) => child.check()?,
+				_ => (),
+			}
+            let block_number = match web3.eth().block_number().wait() {
+				Ok(block_number) => block_number,
+				Err(_) => return Err(Error::new(ErrorKind::Other, "Could not fetch block number.")),
+			};
+            let peer_count = match web3.net().peer_count().wait() {
+				Ok(peer_count) => peer_count,
+				Err(_) => return Err(Error::new(ErrorKind::Other, "Could not fetch peer count.")),
+			};
+
+			times.push(duration_as_f64(elapsed));
+			block_heights.push(block_number.as_u32() as f64);
+			peer_counts.push(peer_count.as_u32() as f64);
+
+            pb.set_position(duration_to_ms(elapsed));
+            pb.set_message(format!("[#{} ; {:2}/25]", block_number.as_u64().separated_string(), peer_count).as_str());
+
+            thread::sleep(DATA_COLLECTION_INTERVAL);
+			elapsed = Instant::now().duration_since(start);
+        }
+
+		let block_speeds_line = {
+			// Take the average of block speeds every 1sec (last element of `times`
+			// is the duration of the collect)
+			let avg_factor = (times.len() as f64 / times[times.len() - 1]) as usize;
+
+			let mut block_speeds = Vec::new();
+			let mut block_speeds_times = Vec::new();
+
+			block_speeds.push(0.0);
+			block_speeds_times.push(0.0);
+
+			for index in 1..((times.len() - 1) / avg_factor) {
+				let cur_index = index * avg_factor;
+				let prev_index = (index - 1) * avg_factor;
+
+				let elapsed = times[cur_index] - times[prev_index];
+				let block_count = block_heights[cur_index] - block_heights[prev_index];
+				let time = times[cur_index];
+
+				block_speeds.push(block_count / elapsed);
+				block_speeds_times.push(time);
+			}
+
+			(block_speeds_times, block_speeds)
+		};
+
+		self.block_heights.push((times.clone(), block_heights));
+		self.block_speeds.push(block_speeds_line);
+		self.peer_counts.push((times.clone(), peer_counts));
+
+		Ok(())
+	}
+
+	pub fn analyse(&self) -> Result<(), Error> {
+		if self.block_heights.len() == 0 {
+			return Err(Error::new(ErrorKind::Other, "No data have been collected."));
+		}
+
+		println!("Analysis results:");
+
+		let skip_index = (duration_as_f64(ANALYSIS_TIME_SKIP) / duration_as_f64(DATA_COLLECTION_INTERVAL)) as usize;
+		let mut index = 1;
+		for (_times, peer_count) in self.peer_counts.iter() {
+			let min = peer_count[skip_index..].min();
+			let max = peer_count[skip_index..].max();
+			let mean = peer_count[skip_index..].mean();
+			let std_dev = peer_count[skip_index..].std_dev();
+
+			println!("  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}",
+				index, min, max, mean, std_dev);
+			index += 1;
+		}
+		println!("");
+
+		// Block speeds are averaged every second
+		let skip_index = ANALYSIS_TIME_SKIP.as_secs() as usize;
+		let mut index = 1;
+		for (_times, block_speeds) in self.block_speeds.iter() {
+			let mean = block_speeds[skip_index..].mean();
+			let std_dev = block_speeds[skip_index..].std_dev();
+			let max = self.block_heights[index - 1].1[self.block_heights[index - 1].1.len() - 1];
+
+			println!("  - [Block Height] Run #{}: max={:.0} ; mean_speed={:.2}bps ; std_dev={:.2}", index, max, mean, std_dev);
+			index += 1;
+		}
+		println!("");
+
+		Ok(())
+	}
+
+	/// Plot the previously collected data
+	pub fn plot(&self) -> Result<(), Error> {
+		if self.block_heights.len() == 0 {
+			return Err(Error::new(ErrorKind::Other, "No data have been collected."));
+		}
+
+		let plotter = Plotter::new();
+
+		plotter.block_height(&self.block_heights);
+		plotter.block_speeds(&self.block_speeds);
+		plotter.peer_count(&self.peer_counts);
+
+		Ok(())
+	}
+}
