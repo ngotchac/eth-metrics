@@ -1,6 +1,7 @@
 use std::error::Error as StdError;
-use std::fs;
-use std::io::{Error, ErrorKind};
+use std::net::TcpListener;
+use std::fs::{self, File};
+use std::io::{Error, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -28,6 +29,18 @@ fn duration_as_f64(duration: Duration) -> f64 {
 
 fn duration_to_ms(duration: Duration) -> u64 {
 	duration.as_secs() * 1_000 + duration.subsec_millis() as u64
+}
+
+fn get_available_port() -> Option<u16> {
+    (8000..9000)
+        .find(|port| port_is_available(*port))
+}
+
+fn port_is_available(port: u16) -> bool {
+    match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
 }
 
 pub struct Runner {
@@ -97,20 +110,31 @@ impl Runner {
 			_ => (),
 		}
 
+		let port = match get_available_port() {
+			Some(port) => port,
+			None => return Err(Error::new(ErrorKind::Other, "Could not find any available port.")),
+		};
+		let rpc_port = match get_available_port() {
+			Some(port) => port,
+			None => return Err(Error::new(ErrorKind::Other, "Could not find any available port.")),
+		};
 		let child = Command::new(&self.bin_path)
 			.arg("-d").arg(tmp_data_dir)
 			.arg("--chain").arg("foundation")
 			.arg("--min-peers").arg("50")
+			.arg("--port").arg(port.to_string())
+			.arg("--jsonrpc-port").arg(rpc_port.to_string())
 			.arg("--no-warp")
 			.arg("--no-ws")
 			.arg("--no-ipc")
 			.arg("--no-secretstore")
+			.arg("")
 			.stderr(Stdio::piped())
 			.stdout(Stdio::piped())
 			.spawn()?;
 
     	let child_guard = ChildGuard::new(child);
-		let (_eloop, transport) = HttpTransport::new("http://localhost:8545").unwrap();
+		let (_eloop, transport) = HttpTransport::new(&format!("http://localhost:{}", rpc_port)).unwrap();
         let web3 = Web3::new(transport);
 
 		self.child = Some(child_guard);
@@ -259,7 +283,10 @@ impl Runner {
 			return Err(Error::new(ErrorKind::Other, "No data have been collected."));
 		}
 
-		println!("Analysis results:");
+		let mut result = String::new();
+
+		result.push_str("Analysis results:");
+		result.push_str(&format!("  - Version: {}\n", self.version));
 
 		let skip_index = (duration_as_f64(ANALYSIS_TIME_SKIP) / duration_as_f64(DATA_COLLECTION_INTERVAL)) as usize;
 		let mut index = 1;
@@ -269,11 +296,11 @@ impl Runner {
 			let mean = peer_count[skip_index..].mean();
 			let std_dev = peer_count[skip_index..].std_dev();
 
-			println!("  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}",
-				index, min, max, mean, std_dev);
+			result.push_str(&format!("  - [Peer Count] Run #{}: min={:.0} ; max={:.0} ;mean={:.2} ; std_dev={:.2}",
+				index, min, max, mean, std_dev));
 			index += 1;
 		}
-		println!("");
+		result.push_str("");
 
 		// Block speeds are averaged every second
 		let skip_index = ANALYSIS_TIME_SKIP.as_secs() as usize;
@@ -283,10 +310,16 @@ impl Runner {
 			let std_dev = block_speeds[skip_index..].std_dev();
 			let max = self.block_heights[index - 1].1[self.block_heights[index - 1].1.len() - 1];
 
-			println!("  - [Block Height] Run #{}: max={:.0} ; mean_speed={:.2}bps ; std_dev={:.2}", index, max, mean, std_dev);
+			result.push_str(&format!("  - [Block Height] Run #{}: max={:.0} ; mean_speed={:.2}bps ; std_dev={:.2}",
+				index, max, mean, std_dev));
 			index += 1;
 		}
-		println!("");
+		result.push_str("");
+
+		let filepath = self.output_path.join("results.md");
+		let mut file = File::create(filepath)?;
+		write!(file, "{}", result);
+		println!("{}", result);
 
 		Ok(())
 	}
