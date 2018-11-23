@@ -1,6 +1,7 @@
 extern crate chrono;
 extern crate clap;
 extern crate console;
+extern crate fs_extra;
 extern crate indicatif;
 extern crate libc;
 extern crate web3;
@@ -28,9 +29,12 @@ use self::runner::Runner;
 
 const NUM_RUNS: usize = 2;
 
-fn run(bin_path: String, name: String, output_path: PathBuf) -> Result<(), Error> {
+fn run(bin_path: String, data_path: PathBuf, name: String, output_path: PathBuf) -> Result<(), Error> {
 	if !fs::metadata(&bin_path)?.is_file() {
 		return Err(Error::new(ErrorKind::Other, "The given binary path is not a file."));
+	}
+	if !fs::metadata(&data_path)?.is_dir() {
+		return Err(Error::new(ErrorKind::Other, "The given data path is not a directory."));
 	}
 
 	let now = Local::now();
@@ -38,7 +42,7 @@ fn run(bin_path: String, name: String, output_path: PathBuf) -> Result<(), Error
 	fs::create_dir_all(&output_path)?;
 
     let started = Instant::now();
-	let mut runner = Runner::new(bin_path, name.clone(), output_path)?;
+	let mut runner = Runner::new(bin_path, data_path, name.clone(), output_path)?;
 
 	println!("Running metrics for {}\n", name);
 
@@ -89,6 +93,13 @@ fn main() {
 			.help("The binary of the ETH-node to run.")
 			.required(true)
 			.takes_value(true))
+		.arg(Arg::with_name("data")
+			.short("d")
+			.long("data")
+			.value_name("FOLDER")
+			.help("The path of the data folder to use.")
+			.required(true)
+			.takes_value(true))
 		.arg(Arg::with_name("name")
 			.short("n")
 			.long("name")
@@ -108,13 +119,16 @@ fn main() {
     let bin_path = matches.value_of("binary").unwrap();
 	let bin_path = String::from(bin_path);
 
+    let data_path = matches.value_of("data").unwrap();
+	let data_path = PathBuf::from(data_path).join("chains");
+
     let name = matches.value_of("name").unwrap();
 	let name = String::from(name);
 
 	let output_path = matches.value_of("output").unwrap();
 	let output_path = PathBuf::from(output_path);
 
-    if let Err(error) = run(bin_path, name, output_path) {
+    if let Err(error) = run(bin_path, data_path, name, output_path) {
         println!("{}{}", style("error: ").bold().red(), error);
         ::std::process::exit(1);
     }

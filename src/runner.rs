@@ -1,3 +1,5 @@
+use std::error::Error as StdError;
+use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -5,6 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
+use fs_extra::dir::{self, CopyOptions};
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
 use separator::Separatable;
@@ -29,6 +32,7 @@ fn duration_to_ms(duration: Duration) -> u64 {
 
 pub struct Runner {
 	bin_path: String,
+	data_path: PathBuf,
 	output_path: PathBuf,
 	name: String,
 	version: String,
@@ -42,11 +46,12 @@ pub struct Runner {
 
 impl Runner {
 	/// Creates a new runner with the given binary path
-	pub fn new(bin_path: String, name: String, output_path: PathBuf) -> Result<Self, Error> {
+	pub fn new(bin_path: String, data_path: PathBuf, name: String, output_path: PathBuf) -> Result<Self, Error> {
 		let version = Runner::version(&bin_path)?;
 
 		Ok(Runner {
 			bin_path,
+			data_path,
 			output_path,
 			name,
 			version,
@@ -79,15 +84,22 @@ impl Runner {
 	/// Start the node with the pre-defined configuration
 	pub fn start(&mut self) -> Result<(), Error> {
 		let tmp_dir = TempDir::new("eth-metrics")?;
-		let data_dir_path = tmp_dir.path().join("parity-data");
-		let data_dir = match data_dir_path.to_str() {
-			Some(data_dir) => data_dir,
+		let tmp_data_dir_path = tmp_dir.path().join("parity-data");
+		let tmp_data_dir = match tmp_data_dir_path.to_str() {
+			Some(tmp_data_dir) => tmp_data_dir,
 			None => return Err(Error::new(ErrorKind::Other, "Could not find the node's data directory.")),
 		};
 
+		fs::create_dir_all(&tmp_data_dir)?;
+		let copy_options = CopyOptions::new();
+		match dir::copy(&self.data_path, tmp_data_dir, &copy_options) {
+			Err(e) => return Err(Error::new(ErrorKind::Other, format!("Could not copy the data directory: {}", e.description()))),
+			_ => (),
+		}
+
 		let child = Command::new(&self.bin_path)
-			.arg("-d").arg(data_dir)
-			.arg("--chain").arg("kovan")
+			.arg("-d").arg(tmp_data_dir)
+			.arg("--chain").arg("foundation")
 			.arg("--no-warp")
 			.stderr(Stdio::piped())
 			.stdout(Stdio::null())
@@ -288,5 +300,12 @@ impl Runner {
 		plotter.peer_count(&self.peer_counts);
 
 		Ok(())
+	}
+}
+
+impl Drop for Runner {
+	fn drop(&mut self) {
+		let tmp_dir = ::std::mem::replace(&mut self.tmp_dir, None);
+		tmp_dir.map_or(Ok(()), |dir| dir.close()).unwrap();
 	}
 }
