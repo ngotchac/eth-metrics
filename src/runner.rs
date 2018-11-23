@@ -19,9 +19,10 @@ use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports:
 use child_guard::ChildGuard;
 use plotter::{Plotter, Line};
 
-const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 10);
+const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 4);
 const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
 const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60);
+const MIN_PEERS: u32 = 50;
 
 fn duration_as_f64(duration: Duration) -> f64 {
     duration.as_secs() as f64 + duration.subsec_millis() as f64 / 1_000.0
@@ -121,7 +122,7 @@ impl Runner {
 		let child = Command::new(&self.bin_path)
 			.arg("-d").arg(tmp_data_dir)
 			.arg("--chain").arg("foundation")
-			.arg("--min-peers").arg("50")
+			.arg("--min-peers").arg(MIN_PEERS.to_string())
 			.arg("--port").arg(port.to_string())
 			.arg("--jsonrpc-port").arg(rpc_port.to_string())
 			.arg("--no-warp")
@@ -238,7 +239,11 @@ impl Runner {
 			peer_counts.push(peer_count.as_u32() as f64);
 
             pb.set_position(duration_to_ms(elapsed));
-            pb.set_message(format!("[#{} ; {:2}/25]", block_number.as_u64().separated_string(), peer_count).as_str());
+            pb.set_message(format!(
+				"[#{} ; {:2}/{}]",
+				block_number.as_u64().separated_string(), peer_count,
+				MIN_PEERS
+			).as_str());
 
             thread::sleep(DATA_COLLECTION_INTERVAL);
 			elapsed = Instant::now().duration_since(start);
