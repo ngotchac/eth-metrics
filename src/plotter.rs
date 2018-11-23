@@ -92,7 +92,7 @@ impl Plotter {
 
 		let filepath = self.output_path.join(params.filepath);
 
-		fg.set_terminal("pngcairo size 800, 600", filepath.to_str().unwrap());
+		fg.set_terminal("pngcairo size 1366, 768", filepath.to_str().unwrap());
 		fg.show();
 	}
 }
