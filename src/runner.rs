@@ -104,7 +104,7 @@ impl Runner {
 			.arg("--no-warp")
 			.arg("--no-ws")
 			.arg("--no-ipc")
-			.arg("--no-secret-store")
+			.arg("--no-secretstore")
 			.stderr(Stdio::piped())
 			.stdout(Stdio::piped())
 			.spawn()?;
