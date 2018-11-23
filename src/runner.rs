@@ -18,9 +18,9 @@ use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports:
 use child_guard::ChildGuard;
 use plotter::{Plotter, Line};
 
-const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(30);
+const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 10);
 const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
-const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(2);
+const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60);
 
 fn duration_as_f64(duration: Duration) -> f64 {
     duration.as_secs() as f64 + duration.subsec_millis() as f64 / 1_000.0
@@ -100,9 +100,13 @@ impl Runner {
 		let child = Command::new(&self.bin_path)
 			.arg("-d").arg(tmp_data_dir)
 			.arg("--chain").arg("foundation")
+			.arg("--min-peers").arg("50")
 			.arg("--no-warp")
+			.arg("--no-ws")
+			.arg("--no-ipc")
+			.arg("--no-secret-store")
 			.stderr(Stdio::piped())
-			.stdout(Stdio::null())
+			.stdout(Stdio::piped())
 			.spawn()?;
 
     	let child_guard = ChildGuard::new(child);
