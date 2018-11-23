@@ -2,6 +2,17 @@ use gnuplot::*;
 
 pub type Line = (Vec<f64>, Vec<f64>);
 
+const COLORS: &'static [&'static str] = &[
+	"#003f5c",
+	"#2f4b7c",
+	"#665191",
+	"#a05195",
+	"#d45087",
+	"#f95d6a",
+	"#ff7c43",
+	"#ffa600"
+];
+
 struct PlotParams {
 	filepath: String,
 	title: String,
@@ -72,7 +83,8 @@ impl Plotter {
 			let mut index = 1;
 			for (times, data) in lines {
 				let caption = format!("Run #{}", index);
-				fg_2d.lines(times, data, &[Caption(&caption), LineWidth(1.5), Color("black")]);
+				let color = COLORS[(index - 1) % COLORS.len()];
+				fg_2d.lines(times, data, &[Caption(&caption), LineWidth(1.5), Color(color)]);
 				index += 1;
 			}
 		}
