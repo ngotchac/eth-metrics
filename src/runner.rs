@@ -21,7 +21,8 @@ use web3::{futures::Future, Web3, transports::Http as HttpTransport, transports:
 use child_guard::ChildGuard;
 use plotter::{Plotter, Line};
 
-const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60 * 3);
+const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60 * 5);
+const BLOCK_SPEEDS_AVERAGE_DURATION: Duration = Duration::from_secs(4);
 const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 33);
 const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
 const MIN_PEERS: u32 = 50;
@@ -254,9 +255,12 @@ impl Runner {
         }
 
 		let block_speeds_line = {
-			// Take the average of block speeds every 1sec (last element of `times`
+			// Take the average of block speeds every BLOCK_SPEEDS_AVERAGE_DURATION
+			//  seconds (last element of `times`
 			// is the duration of the collect)
-			let avg_factor = (times.len() as f64 / times[times.len() - 1]) as usize;
+			let avg_secs = BLOCK_SPEEDS_AVERAGE_DURATION.as_secs() as f64;
+			let duration = times[times.len() - 1];
+			let avg_factor = (times.len() as f64 / duration * avg_secs) as usize;
 
 			let mut block_speeds = Vec::new();
 			let mut block_speeds_times = Vec::new();
@@ -311,8 +315,8 @@ impl Runner {
 		}
 		result.push_str("\n");
 
-		// Block speeds are averaged every second
-		let skip_index = ANALYSIS_TIME_SKIP.as_secs() as usize;
+		// Block speeds are averaged every BLOCK_SPEEDS_AVERAGE_DURATION second
+		let skip_index = (ANALYSIS_TIME_SKIP.as_secs() / BLOCK_SPEEDS_AVERAGE_DURATION.as_secs()) as usize;
 		let mut index = 1;
 		for (_times, block_speeds) in self.block_speeds.iter() {
 			let mean = block_speeds[skip_index..].mean();

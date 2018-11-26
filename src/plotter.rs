@@ -15,8 +15,7 @@ struct PlotParams {
 	filepath: String,
 	title: String,
 	y_label: String,
-	y_min: f64,
-	y_max: f64,
+	y_range: Option<(f64, f64)>,
 }
 
 pub struct Plotter {
@@ -36,8 +35,7 @@ impl Plotter {
 			filepath: String::from("block_heights.png"),
 			title: String::from("Block heights"),
 			y_label: String::from("Block Height"),
-			y_min: 0.0,
-			y_max: 500_000.0,
+			y_range: None,
 		};
 
 		self.plot(params, lines);
@@ -48,8 +46,7 @@ impl Plotter {
 			filepath: String::from("block_speeds.png"),
 			title: String::from("Block speed"),
 			y_label: String::from("Block speed (bps)"),
-			y_min: 0.0,
-			y_max: 6_000.0,
+			y_range: Some((0.0, 6_000.0)),
 		};
 
 		self.plot(params, lines);
@@ -60,8 +57,7 @@ impl Plotter {
 			filepath: String::from("peer_counts.png"),
 			title: String::from("Peer count"),
 			y_label: String::from("Number of peers"),
-			y_min: 0.0,
-			y_max: 100.0,
+			y_range: Some((0.0, 100.0)),
 		};
 
 		self.plot(params, lines);
@@ -78,8 +74,11 @@ impl Plotter {
 				.set_x_label("Time (s)", &[])
 				.set_x_range(Fix(0.0), Auto)
 				.set_y_label(params.y_label.as_str(), &[])
-				.set_y_range(Fix(params.y_min), Fix(params.y_max))
 				.set_y_ticks(Some((Auto, 1)), &[Format("%'.0f")], &[]);
+
+			if let Some((y_min, y_max)) = params.y_range {
+				fg_2d.set_y_range(Fix(y_min), Fix(y_max));
+			}
 
 			let mut index = 1;
 			for (times, data) in lines {
