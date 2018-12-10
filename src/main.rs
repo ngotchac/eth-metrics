@@ -28,7 +28,7 @@ use indicatif::HumanDuration;
 
 use self::runner::Runner;
 
-const NUM_RUNS: usize = 4;
+const NUM_RUNS: usize = 3;
 
 fn run(bin_path: String, data_path: PathBuf, name: String, output_path: PathBuf) -> Result<(), Error> {
 	if !fs::metadata(&bin_path)?.is_file() {

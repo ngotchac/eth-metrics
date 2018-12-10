@@ -22,10 +22,10 @@ use child_guard::ChildGuard;
 use plotter::{Plotter, Line};
 
 const ANALYSIS_TIME_SKIP: Duration = Duration::from_secs(60 * 5);
-const BLOCK_SPEEDS_AVERAGE_DURATION: Duration = Duration::from_secs(4);
-const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 33);
+const BLOCK_SPEEDS_AVERAGE_DURATION: Duration = Duration::from_secs(10);
+const DATA_COLLECTION_DURATION: Duration = Duration::from_secs(60 * 10);
 const DATA_COLLECTION_INTERVAL: Duration = Duration::from_millis(500);
-const MIN_PEERS: u32 = 50;
+const MIN_PEERS: u32 = 75;
 
 fn duration_as_f64(duration: Duration) -> f64 {
     duration.as_secs() as f64 + duration.subsec_millis() as f64 / 1_000.0
