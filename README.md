@@ -18,3 +18,11 @@ The idea is that this would be the starting point of all the runs, thus having t
 containing DB for a few thousands blocks (we had some issue with node sending wrong
 first blocks on Foundation, thus skipping the first few thousands blocks makes more reliable
 runs).
+
+## Graphs
+
+
+![Example Block Height](images/example-1.png?raw=true "Example Block Height")
+![Example Peer Count](images/example-2.png?raw=true "Example Peer Count")
+
+
